@@ -140,11 +140,11 @@ The application includes a complete HTML test interface for easy WebAuthn testin
    ```
 
 2. **Open the test interface**
-   - Navigate to: http://localhost:8000
+   - Navigate to: http://localhost:8000/test.html
    - You'll be automatically redirected to the test interface
 
 3. **Test the Registration Flow**
-   - Enter an email address (default: `test`)
+   - Enter an email address (default: `test@example.com`)
    - Click "Register with WebAuthn"
    - Follow your browser's prompts to use biometrics/security key
    - You should see "Registration successful!"
