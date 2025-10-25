@@ -40,12 +40,6 @@ Thumbs.db
 *.p12
 *.pfx
 
-# Test files and temporary files
-test*.html
-simple-test*.html
-*-test.html
-*.tmp
-*.temp
 
 # Logs
 *.log
