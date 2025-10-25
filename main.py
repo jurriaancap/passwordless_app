@@ -12,6 +12,8 @@ from webauthn.helpers.structs import (
     PublicKeyCredentialDescriptor,
     AuthenticatorTransport,
 )
+
+from webauthn.helpers import options_to_json_dict
 import secrets
 import time
 import json
@@ -65,7 +67,10 @@ def begin_register(email: str):
     # 1. options_to_json() converts WebAuthn object (with bytes) to JSON string (with base64url)
     # 2. json.loads() converts JSON string back to Python dict for FastAPI serialization
     # this ensures proper base64url encoding while keeping FastAPI happy
-    return json.loads(options_to_json(registration_options))
+    #return json.loads(options_to_json(registration_options))
+
+    ## this seem to be a better sollution lets try this 
+    return options_to_json_dict(registration_options)
 
 
 ################
@@ -136,7 +141,8 @@ def begin_login(email: str):
     # we add the challlenge to the challenges again to prevent replay attkcs
     challenges[email] = authentication_options.challenge
     ## return the json of the authentication options to the browser
-    return json.loads(options_to_json(authentication_options))
+    #return json.loads(options_to_json(authentication_options))
+    return options_to_json_dict(authentication_options)
 
 
 ############
@@ -207,7 +213,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "main:app",      # "filename:app_instance"
-        host="127.0.0.1",
+        host="localhost",
         port=8000,
         reload=True     # auto-reload when code changes
     )
