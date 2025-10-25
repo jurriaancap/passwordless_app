@@ -61,7 +61,10 @@ def begin_register(email: str):
     # we save the challenge in our in memory database , we use the challange to prevent replay attacks from outside the orign browser sesion 
     challenges[email] =  registration_options.challenge
 
-    #now we return it as a json object
+    # now we return it as a json object using a 2-step conversion:
+    # 1. options_to_json() converts WebAuthn object (with bytes) to JSON string (with base64url)
+    # 2. json.loads() converts JSON string back to Python dict for FastAPI serialization
+    # this ensures proper base64url encoding while keeping FastAPI happy
     return json.loads(options_to_json(registration_options))
 
 
