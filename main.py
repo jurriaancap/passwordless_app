@@ -19,7 +19,7 @@ import base64
 
 app = FastAPI()
 
-# Add CORS middleware
+# Add CORS middleware, this is for DEV only and allows https://localhost:8000 to work with 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:8000"],
@@ -29,8 +29,8 @@ app.add_middleware(
 )
 
 ## demo databases in memory only , for prod use a database
-users = {}
-challenges = {}
+users = {} 
+challenges = {} ## for example use redis here
 
 RP_ID = "localhost"
 ORIGIN = "http://localhost:8000" 
