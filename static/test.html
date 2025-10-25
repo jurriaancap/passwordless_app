@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebAuthn Test - Passwordless Authentication</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f5f5f5; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; text-align: center; }
+        h2 { color: #666; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        button { padding: 12px 24px; margin: 10px 0; font-size: 16px; border: none; border-radius: 4px; cursor: pointer; }
+        .register-btn { background: #4CAF50; color: white; }
+        .login-btn { background: #2196F3; color: white; }
+        .register-btn:hover { background: #45a049; }
+        .login-btn:hover { background: #1976D2; }
+        input { padding: 10px; margin: 5px 0; width: 300px; border: 1px solid #ddd; border-radius: 4px; }
+        .result { margin: 15px 0; padding: 15px; border-radius: 4px; display: none; }
+        .error { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
+        .success { background: #e8f5e8; color: #2e7d32; border: 1px solid #c8e6c9; }
+        .info { background: #e3f2fd; color: #1565c0; border: 1px solid #bbdefb; }
+        .step { margin: 10px 0; padding: 10px; background: #f8f9fa; border-left: 4px solid #007bff; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WebAuthn Passwordless Authentication Test</h1>
+        
+        <div class="step">
+            <strong>Testing Steps:</strong><br>
+            1. Enter an email and click Register<br>
+            2. Follow browser prompts for biometric/security key<br>
+            3. After registration, try Login with the same email
+        </div>
+
+        <div>
+            <h2>Registration</h2>
+            <input type="email" id="registerEmail" placeholder="Enter email" value="test@example.com">
+            <br>
+            <button class="register-btn" onclick="register()">Register with WebAuthn</button>
+            <div id="registerResult" class="result"></div>
+        </div>
+
+        <div>
+            <h2>Login</h2>
+            <input type="email" id="loginEmail" placeholder="Enter email" value="test@example.com">
+            <br>
+            <button class="login-btn" onclick="login()">Login with WebAuthn</button>
+            <div id="loginResult" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        // API base URL for all webauthn endpoints
+        const API_BASE = 'http://localhost:8000';
+
+        ///////////////////////////////////////
+        // Helper functions for data conversion between browser and server
+
+        // Helper function to convert ArrayBuffer to base64url
+        // webauthn browser APIs return ArrayBuffers but JSON requires strings
+        function bufferToBase64url(buffer) {
+            const bytes = new Uint8Array(buffer);
+            let str = '';
+            // convert each byte to a character
+            for (const charCode of bytes) {
+                str += String.fromCharCode(charCode);
+            }
+            // convert to base64 and make it url safe (replace + with -, / with _, remove =)
+            const base64String = btoa(str);
+            return base64String.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+
+        // Helper function to convert base64url to ArrayBuffer
+        // server sends base64url strings but webauthn APIs need ArrayBuffers
+        function base64urlToBuffer(base64url) {
+            if (!base64url) {
+                throw new Error('base64url string is undefined or empty');
+            }
+            
+            try {
+                // Remove padding and convert base64url to base64 (reverse the url safe conversion)
+                const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+                // Add padding if needed (base64 strings must be divisible by 4)
+                const padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, '=');
+                
+                // Convert to binary string using browser built-in
+                const binary = atob(padded);
+                
+                // Create ArrayBuffer and fill it with the binary data
+                const buffer = new ArrayBuffer(binary.length);
+                const bytes = new Uint8Array(buffer);
+                
+                // copy each character code to the byte array
+                for (let i = 0; i < binary.length; i++) {
+                    bytes[i] = binary.charCodeAt(i);
+                }
+                
+                return buffer;
+            } catch (error) {
+                throw new Error(`Failed to convert base64url to buffer: ${error.message}`);
+            }
+        }
+
+        // Helper function to display messages to the user
+        // shows success, error, or info messages in the UI
+        function showResult(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.className = `result ${type}`;
+            element.textContent = message;
+            element.style.display = 'block';
+        }
+
+        ////////////////////////////////////////
+        // WebAuthn Registration Flow
+
+        async function register() {
+            // get the email from the registration input field
+            const email = document.getElementById('registerEmail').value;
+            const resultDiv = document.getElementById('registerResult');
+            
+            // validate that user entered an email
+            if (!email) {
+                showResult('registerResult', 'Please enter an email address', 'error');
+                return;
+            }
+
+            try {
+                // Check if the browser supports WebAuthn before proceeding
+                if (!window.PublicKeyCredential) {
+                    throw new Error('WebAuthn not supported in this browser');
+                }
+
+                showResult('registerResult', 'Getting registration options...', 'info');
+
+                //////////////////////
+                // Step 1: Get registration options from server
+                // this includes the challenge, user info, and crypto parameters
+                const optionsResponse = await fetch(`${API_BASE}/webauthn/register/options?email=${encodeURIComponent(email)}`);
+                if (!optionsResponse.ok) {
+                    throw new Error(`Failed to get options: ${optionsResponse.status}`);
+                }
+                
+                const options = await optionsResponse.json();
+                console.log('Registration options received:', options);
+                console.log('User ID:', options.user?.id);
+                console.log('Challenge:', options.challenge);
+
+                // validate that the server response has the required fields
+                if (!options.user || !options.user.id) {
+                    throw new Error('Invalid options: missing user.id');
+                }
+                if (!options.challenge) {
+                    throw new Error('Invalid options: missing challenge');
+                }
+
+                //////////////////////
+                // Step 2: Convert base64url strings to ArrayBuffers
+                // webauthn APIs expect binary data not strings, so we convert here
+                console.log('Converting user.id from base64url...');
+                options.user.id = base64urlToBuffer(options.user.id);
+                console.log('User ID converted successfully');
+                
+                console.log('Converting challenge from base64url...');
+                options.challenge = base64urlToBuffer(options.challenge);
+                console.log('Challenge converted successfully');
+                
+                // if there are existing credentials to exclude, convert those too
+                if (options.excludeCredentials && options.excludeCredentials.length > 0) {
+                    console.log('Converting excludeCredentials...');
+                    options.excludeCredentials.forEach((cred, index) => {
+                        console.log(`Converting credential ${index}:`, cred.id);
+                        cred.id = base64urlToBuffer(cred.id);
+                    });
+                }
+
+                showResult('registerResult', 'Please authenticate with your device...', 'info');
+
+                //////////////////////
+                // Step 3: Call WebAuthn API to create new credential
+                // this will prompt the user for biometrics, security key, etc
+                const credential = await navigator.credentials.create({ publicKey: options });
+                console.log('Credential created:', credential);
+
+                //////////////////////
+                // Step 4: Convert ArrayBuffers back to base64url for sending to server
+                // the server expects strings in JSON, not binary data
+                const credentialResponse = {
+                    id: credential.id,
+                    rawId: bufferToBase64url(credential.rawId),
+                    response: {
+                        attestationObject: bufferToBase64url(credential.response.attestationObject),
+                        clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+                    },
+                    type: credential.type,
+                };
+
+                showResult('registerResult', 'Verifying registration...', 'info');
+
+                //////////////////////
+                // Step 5: Send to verification endpoint for server-side validation
+                // server will verify the credential and store it in the database
+                const verifyResponse = await fetch(`${API_BASE}/webauthn/register/verify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        Email: email,
+                        credential: credentialResponse
+                    })
+                });
+
+                const result = await verifyResponse.json();
+                
+                // check if registration was successful and show appropriate message
+                if (verifyResponse.ok) {
+                    showResult('registerResult', `Registration successful! You can now login with ${email}`, 'success');
+                } else {
+                    showResult('registerResult', `Registration failed: ${JSON.stringify(result)}`, 'error');
+                }
+
+            } catch (error) {
+                // log the error for debugging and show user-friendly message
+                console.error('Registration error:', error);
+                showResult('registerResult', `Registration failed: ${error.message}`, 'error');
+            }
+        }
+
+        ////////////////////////////////////////
+        // WebAuthn Login/Authentication Flow
+
+        async function login() {
+            // get the email from the login input field
+            const email = document.getElementById('loginEmail').value;
+            const resultDiv = document.getElementById('loginResult');
+            
+            // validate that user entered an email
+            if (!email) {
+                showResult('loginResult', 'Please enter an email address', 'error');
+                return;
+            }
+
+            try {
+                showResult('loginResult', 'Getting authentication options...', 'info');
+
+                //////////////////////
+                // Step 1: Get authentication options from server
+                // this includes the challenge and list of allowed credentials for this user
+                const optionsResponse = await fetch(`${API_BASE}/webauthn/login/options?email=${encodeURIComponent(email)}`);
+                if (!optionsResponse.ok) {
+                    throw new Error(`Failed to get options: ${optionsResponse.status}`);
+                }
+                
+                const options = await optionsResponse.json();
+                console.log('Authentication options received:', options);
+                console.log('Challenge:', options.challenge);
+                console.log('Allow credentials:', options.allowCredentials);
+
+                // validate that the server response has the required challenge
+                if (!options.challenge) {
+                    throw new Error('Invalid options: missing challenge');
+                }
+
+                //////////////////////
+                // Step 2: Convert base64url strings to ArrayBuffers
+                // webauthn APIs expect binary data not strings
+                console.log('Converting challenge from base64url...');
+                options.challenge = base64urlToBuffer(options.challenge);
+                console.log('Challenge converted successfully');
+                
+                // convert the allowed credentials list if it exists
+                if (options.allowCredentials && options.allowCredentials.length > 0) {
+                    console.log('Converting allowCredentials...');
+                    options.allowCredentials.forEach((cred, index) => {
+                        console.log(`Converting credential ${index}:`, cred.id);
+                        cred.id = base64urlToBuffer(cred.id);
+                    });
+                } else {
+                    console.log('No allowCredentials found');
+                }
+
+                showResult('loginResult', 'Please authenticate with your device...', 'info');
+
+                //////////////////////
+                // Step 3: Call WebAuthn API to authenticate with existing credential
+                // this will prompt the user to use the same method they registered with
+                const credential = await navigator.credentials.get({ publicKey: options });
+                console.log('Authentication credential:', credential);
+
+                //////////////////////
+                // Step 4: Convert ArrayBuffers back to base64url for sending to server
+                // the server expects strings in JSON format
+                const credentialResponse = {
+                    id: credential.id,
+                    rawId: bufferToBase64url(credential.rawId),
+                    response: {
+                        authenticatorData: bufferToBase64url(credential.response.authenticatorData),
+                        clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+                        signature: bufferToBase64url(credential.response.signature),
+                    },
+                    type: credential.type,
+                };
+
+                showResult('loginResult', 'Verifying authentication...', 'info');
+
+                ///////////////////
+                // Step 5: Send to verification endpoint for server-side validation
+                // server will verify the signature using the stored public key
+                const verifyResponse = await fetch(`${API_BASE}/webauthn/login/verify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: email,
+                        credential: credentialResponse
+                    })
+                });
+
+                const result = await verifyResponse.json();
+                
+                // check if authentication was successful and show appropriate message
+                if (verifyResponse.ok) {
+                    showResult('loginResult', `Login successful! Welcome ${result.user}. Login time: ${new Date(result.login_time * 1000).toLocaleString()}`, 'success');
+                } else {
+                    showResult('loginResult', `Login failed: ${JSON.stringify(result)}`, 'error');
+                }
+
+            } catch (error) {
+                // log the error for debugging and show user-friendly message
+                console.error('Login error:', error);
+                showResult('loginResult', `Login failed: ${error.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>
