@@ -47,9 +47,17 @@ def begin_register(email: str):
     if email not in users:
         user_id = secrets.token_bytes(16)
         users[email] = {"id": user_id, "credentials": []}
+        exclude_credentials = []
     else:
         # Use existing user_id for additional devices
         user_id = users[email]["id"]
+        # Exclude existing credentials to prevent duplicate device registrations
+        exclude_credentials = [
+            PublicKeyCredentialDescriptor(
+                id=base64.urlsafe_b64decode(credential["id"] + '=' * (4 - len(credential["id"]) % 4)),
+                transports=[AuthenticatorTransport.INTERNAL]
+            ) for credential in users[email]["credentials"]
+        ]
     
     registration_options = generate_registration_options(
         rp_name= "MyWebauthnAPP",
@@ -57,7 +65,8 @@ def begin_register(email: str):
         ## we include the user_id from above (either new or existing)
         user_id =user_id,
         user_name = email,
-        user_display_name= email
+        user_display_name= email,
+        exclude_credentials=exclude_credentials
     )
 
     # we save the challenge in our in memory database , we use the challange to prevent replay attacks from outside the orign browser sesion 
