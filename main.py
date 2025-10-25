@@ -41,11 +41,18 @@ ORIGIN = "http://localhost:8000"
 
 @app.get("/webauthn/register/options")
 def begin_register(email: str):
-    user_id = secrets.token_bytes(16)
+    # Check if user already exists, if not create new user
+    if email not in users:
+        user_id = secrets.token_bytes(16)
+        users[email] = {"id": user_id, "credentials": []}
+    else:
+        # Use existing user_id for additional devices
+        user_id = users[email]["id"]
+    
     registration_options = generate_registration_options(
         rp_name= "MyWebauthnAPP",
         rp_id = RP_ID,
-        ## we include the user_id generated above
+        ## we include the user_id from above (either new or existing)
         user_id =user_id,
         user_name = email,
         user_display_name= email
@@ -53,9 +60,6 @@ def begin_register(email: str):
 
     # we save the challenge in our in memory database , we use the challange to prevent replay attacks from outside the orign browser sesion 
     challenges[email] =  registration_options.challenge
-
-    # now we save the user credentials in our memory user database, its a new user (no existing device yet so we create a empty credentials list , during verificaiton we will fill it up)
-    users[email] = {"id": user_id, "credentials": []}
 
     #now we return it as a json object
     return json.loads(options_to_json(registration_options))

@@ -140,7 +140,7 @@ The application includes a complete HTML test interface for easy WebAuthn testin
    ```
 
 2. **Open the test interface**
-   - Navigate to: http://localhost:8000/test.html
+   - Navigate to: http://localhost:8000
    - You'll be automatically redirected to the test interface
 
 3. **Test the Registration Flow**
