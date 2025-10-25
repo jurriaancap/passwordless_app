@@ -130,12 +130,69 @@ ORIGIN = "http://localhost:8000"  # → "https://yourdomain.com"
 
 ## Testing
 
-### Using Swagger UI (Limited)
-1. Go to http://localhost:8000/docs
-2. Test the `/register/options` endpoint
-3. **Note**: Full WebAuthn flow requires a proper browser client with WebAuthn support
+### Using the Built-in HTML Test Interface (Recommended)
+
+The application includes a complete HTML test interface for easy WebAuthn testing:
+
+1. **Start the server**
+   ```bash
+   python main.py
+   ```
+
+2. **Open the test interface**
+   - Navigate to: http://localhost:8000
+   - You'll be automatically redirected to the test interface
+
+3. **Test the Registration Flow**
+   - Enter an email address (default: `test`)
+   - Click "Register with WebAuthn"
+   - Follow your browser's prompts to use biometrics/security key
+   - You should see "Registration successful!"
+
+4. **Test the Login Flow**
+   - Use the same email address
+   - Click "Login with WebAuthn"
+   - Authenticate with the same method used during registration
+   - You should see "Login successful!" with timestamp
+
+### Test Interface Features
+
+- **Real WebAuthn Integration** - Uses actual browser WebAuthn APIs
+- **Visual Feedback** - Success/error messages with clear status
+- **Detailed Logging** - Browser console shows full request/response details
+- **Base64URL Handling** - Proper credential encoding/decoding
+- **Error Handling** - Descriptive error messages for troubleshooting
+
+### Browser Console Debugging
+
+Open browser developer tools (F12) to see detailed logs:
+```javascript
+// Registration flow logs
+Registration options received: {...}
+Credential created: {...}
+Registration successful!
+
+// Login flow logs
+Authentication options received: {...}
+Credential retrieved: {...}
+Login successful!
+```
+
+### Supported Authenticators
+
+- **Platform Authenticators**: Touch ID, Face ID, Windows Hello, fingerprint readers
+- **Security Keys**: USB/NFC FIDO2 keys (YubiKey, etc.)
+- **Cross-Platform**: Any FIDO2-compatible device
+
+### How to test 
+
+1. Go to http://localhost:8000/test.html
+2. register a random email acount (for example test@test.com)
+3. login using the same email acount
+**Note**: Full WebAuthn flow requires a proper browser client with WebAuthn support
 
 ### Real Testing Requirements
+
 - **Browser with WebAuthn** support
 - **HTTPS** or localhost
 - **Biometric device** or security key
@@ -146,10 +203,12 @@ ORIGIN = "http://localhost:8000"  # → "https://yourdomain.com"
 ```
 passwordless_auth/
 ├── main.py              # FastAPI application
+├── static/              # Static files for test interface
+│   ├── test.html       # WebAuthn test interface
+│   └── index.html      # Redirect to test interface
 ├── requirements.txt     # Python dependencies
 ├── .gitignore          # Git ignore rules
-├── README.md           # This file
-
+└── README.md           # This file
 ```
 
 ## Common Issues

@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from webauthn import (
     options_to_json,
     generate_registration_options,
@@ -13,8 +14,19 @@ from webauthn.helpers.structs import (
 )
 import secrets
 import time
+import json
+import base64
 
 app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 ## demo databases in memory only , for prod use a database
 users = {}
@@ -46,7 +58,7 @@ def begin_register(email: str):
     users[email] = {"id": user_id, "credentials": []}
 
     #now we return it as a json object
-    return JSONResponse(options_to_json(registration_options))
+    return json.loads(options_to_json(registration_options))
 
 
 ################
@@ -73,7 +85,9 @@ async def finish_register(request: Request):
 
     ### now we store the device credential 
     device_credential = {
-        "id": registration_verification.credential_id,
+        ## webauthn doesnt add = as padding to the string if needed causing errors, so we strip away any right side padding if present
+        # unsure if this is a dirty fix or just normal ?
+        "id": base64.urlsafe_b64encode(registration_verification.credential_id).decode().rstrip('='),
         "public_key": registration_verification.credential_public_key,
         # we also use a counter to prevent replay attacks 
         "counter": registration_verification.sign_count
@@ -91,7 +105,7 @@ async def finish_register(request: Request):
 ########################################
 ## now we can start the login process 
 
-@app.get("/webautn/login/options")
+@app.get("/webauthn/login/options")
 def begin_login(email: str):
     # first we check if the users is already registered in the database and has at least 1 device in their table
     user = users.get(email)
@@ -101,7 +115,7 @@ def begin_login(email: str):
     # then we check if the credentials match ! we loop through user[credentials] and append to the publickeycredentialdescriptor
     allow_credentials = [
         PublicKeyCredentialDescriptor(
-            id=credential["id"],
+            id=base64.urlsafe_b64decode(credential["id"] + '=' * (4 - len(credential["id"]) % 4)),
             transports=[AuthenticatorTransport.INTERNAL]
         ) for credential in user["credentials"]
     ]
@@ -115,12 +129,12 @@ def begin_login(email: str):
     # we add the challlenge to the challenges again to prevent replay attkcs
     challenges[email] = authentication_options.challenge
     ## return the json of the authentication options to the browser
-    return JSONResponse(options_to_json(authentication_options))
+    return json.loads(options_to_json(authentication_options))
 
 
 ############
 ## now we can verify the login
-@app.post("/webauth/login/verify")
+@app.post("/webauthn/login/verify")
 async def finish_login(request: Request):
     ## we do the same thing as above, get the body and details from the body
     body = await request.json()
@@ -140,7 +154,7 @@ async def finish_login(request: Request):
         raise HTTPException(400, f"There was a issue with login {email}")
 
     ## now we can start login with the existing credential
-    # store the credential id from the body 
+    # store the credential id from the body (already base64url string)
     credential_id = body["credential"]["id"]
 
     ## find the credential id in the user object from above
@@ -177,6 +191,9 @@ async def finish_login(request: Request):
         "login_time": int(time.time())
     }
 
+
+# Mount static files AFTER all API routes to avoid conflicts
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 # lets run fastapi 
 if __name__ == "__main__":
