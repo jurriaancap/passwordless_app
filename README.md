@@ -149,7 +149,7 @@ passwordless_auth/
 ├── requirements.txt     # Python dependencies
 ├── .gitignore          # Git ignore rules
 ├── README.md           # This file
-└── .venv/              # Virtual environment (ignored)
+
 ```
 
 ## Common Issues
